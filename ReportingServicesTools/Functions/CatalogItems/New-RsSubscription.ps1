@@ -78,6 +78,9 @@ function New-RsSubscription
         .PARAMETER FileWriteMode
             Use with -DeliveryMethod 'FileShare' to specify the write behaviour when a file of the same name already exists. Valid values are NONE, OVERWRITE and AUTOINCREMENT.
 
+        .PARAMETER ReportParameter
+            specify the parameters for a report
+            
         .EXAMPLE
             New-RsSubscription -RsItem '/path/to/my/Report' -Description 'Daily to folder' -RenderFormat 'PDF' -Schedule (New-RsScheduleXML -Daily 1) -DeliveryMethod 'FileShare' -FileSharePath '\\Myserver\folder' -FileName 'MyReport' -FileWriteMode Overwrite
 
@@ -134,6 +137,14 @@ function New-RsSubscription
             Description
             -----------
             This command will establish a connection to the Report Server located at http://myserver/ReportServer using current user's credentials and create a subscription based on other parameters specified.
+
+        .EXAMPLE
+            $ReportParameters = @{ 'CollID' = 'P0001360'; 'UpdateFilter' = $null }
+            New-RsSubscription -ReportParameters $ReportParameters ...
+
+            Description
+            -----------
+            This command will establish a connection to the Report Server using current user's credentials and create a subscription based the defined report parameters and on other parameters specified.
     #>
     
     [cmdletbinding(SupportsShouldProcess = $true, ConfirmImpact = 'Medium', DefaultParameterSetName='FileShare')]
@@ -226,8 +237,9 @@ function New-RsSubscription
         [ValidateSet('None','Overwrite','AutoIncrement')]
         [string]
         $FileWriteMode = 'Overwrite'
+        ,
+        [HashTable]$ReportParameters
     )
-
     Begin
     {
         $Proxy = New-RsWebServiceProxyHelper -BoundParameters $PSBoundParameters
@@ -297,12 +309,23 @@ function New-RsSubscription
             $ExtensionSettings = New-Object "$Namespace.ExtensionSettings" -Property @{ Extension = "Report Server $DeliveryMethod"; ParameterValues = $ParameterValues }
 
             $MatchData = $Schedule
-            $ReportParameters = $Null
+            # $ReportParameters = $Null
+            if ( $ReportParameters ) {
+                $RepParameters = @()
+                $Key = @( $ReportParameters.Keys )[1]
+                foreach ( $Key in @( $ReportParameters.Keys ) ) {
+                    $RepParameter = New-Object "$Namespace.ParameterValue" -Property @{ Name = $Key; Value = $ReportParameters."$( $Key )" }
+                    $RepParameters += $RepParameter
+                }
+            }
+            else {
+                $RepParameters = $null
+            }
 
             if ($PSCmdlet.ShouldProcess($RsItem, "Creating new subscription"))
             {
                 Write-Verbose "Creating Subscription..."
-                $subscriptionId = $Proxy.CreateSubscription($RsItem, $ExtensionSettings, $Description, $EventType, $MatchData, $ReportParameters)
+                $subscriptionId = $Proxy.CreateSubscription($RsItem, $ExtensionSettings, $Description, $EventType, $MatchData, $RepParameters )
 
                 [pscustomobject]@{
                     NewSubscriptionId = $subscriptionId
